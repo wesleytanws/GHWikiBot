@@ -1,0 +1,54 @@
+name: GHWikiBot
+
+on: pull_request
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: repo
+          fetch-depth: 0
+
+      - name: Checkout wiki
+        uses: actions/checkout@v2
+        with:
+          repository: ${{ github.repository }}.wiki
+          path: wiki
+
+      - name: Checkout script
+        uses: actions/checkout@v2
+        with:
+          repository: wesleytanws/GHWikiBot
+          path: script
+
+      - name: Run script
+        id: script
+        run: |
+          summary="$(bash script/entrypoint.sh ${{ github.repository }} ${{ github.head_ref }} ${{ github.event.pull_request.base.sha }})"
+          summary="${summary//$'\n'/'%0A'}"
+          echo "::set-output name=summary::$summary"
+
+          status=$(cat total_missing_ref_count.txt)
+          echo "::set-output name=status::$status"
+          rm -f "total_missing_ref_count.txt"
+
+      - name: Comment on pull request
+        uses: actions/github-script@v3
+        env:
+          summary: ${{ steps.script.outputs.summary }}
+        with:
+          script: |
+            github.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: process.env.summary
+            });
+
+      - name: Exit job
+        run: exit ${{ steps.script.outputs.status }}
